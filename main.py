@@ -3,15 +3,46 @@ import code
 import marshal
 import dis
 import sys
+import cmd
 import opcode
 import builtins
 from types import CodeType
 from types import FrameType
 from typing import Any
 
-num = 0
 
-class Xpdb(bdb.Bdb):
+class Xpdb(bdb.Bdb, cmd.Cmd):
+    prompt = '(Xpdb)'
+    intro = 'A debugger for pyc file'
+
+    def __init__(self):
+        bdb.Bdb.__init__(self)
+        cmd.Cmd.__init__(self)
+        self.bplist = []
+        self.stepflag = True
+
+    def do_break(self, arg: int):
+        if type(arg) != int:
+            print('usage: b[reak] line')
+            return
+        self.bplist.append(arg)
+
+    do_b = do_break
+
+    def do_continue(self):
+        self.stepflag = False
+        return
+    do_c = do_continue
+
+    def do_step(self):
+        self.stepflag = True
+        return
+    do_s = do_step
+
+    def break_here(self, frame: FrameType) -> bool:
+        if frame.f_lasti in self.bplist:
+            return True
+        return False
 
     def __getcocode__(self, bytecode: bytes) -> CodeType:
         dcode = marshal.loads(bytecode)
@@ -21,7 +52,7 @@ class Xpdb(bdb.Bdb):
         dis.disco(self.dcode, frame.f_lasti)
 
     def dispatch_opcode(self, frame: FrameType):
-        if self.stop_here(frame) or self.break_here(frame):
+        if self.stepflag or self.break_here(frame):
             self.user_opcode(frame)
         return self.trace_dispatch
 
@@ -46,6 +77,10 @@ class Xpdb(bdb.Bdb):
             return self.trace_dispatch
         return self.trace_dispatch
 
+    # TODO
+    def interaction(self):
+        return
+
     def user_call(self, frame, argument_list) -> None:
         name = frame.f_code.co_name
         if not name: name = '<Unknown>'
@@ -57,15 +92,15 @@ class Xpdb(bdb.Bdb):
     def user_line(self, frame: FrameType) -> None:
         print('line ', frame.f_lineno)
 
-    def run(self, cmd):
+    def run(self, file: bytes):
         self.reset()
-        self.dcode = self.__getcocode__(cmd)
+        self.dcode = self.__getcocode__(file)
         sys.settrace(self.trace_dispatch)
         print(self.dcode.co_name)
         try:
             exec(self.dcode)
-        # except:
-        #     print("Something Wrong")
+        except:
+            print("Something Wrong")
         finally:
             self.quitting = True
             sys.settrace(None)
