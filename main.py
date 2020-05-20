@@ -21,22 +21,25 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         self.bplist = []
         self.stepflag = True
 
-    def do_break(self, arg: int):
-        if type(arg) != int:
+    def do_break(self, arg: str):
+        try:
+            self.bplist.append(int(arg))
+        except ValueError:
             print('usage: b[reak] line')
             return
         self.bplist.append(arg)
-
     do_b = do_break
 
-    def do_continue(self):
+    def do_continue(self, arg):
+        print(arg)
         self.stepflag = False
-        return
+        return 1
     do_c = do_continue
 
-    def do_step(self):
+    def do_step(self, arg):
+        print('arg:', arg)
         self.stepflag = True
-        return
+        return 1
     do_s = do_step
 
     def break_here(self, frame: FrameType) -> bool:
@@ -50,6 +53,7 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
 
     def user_opcode(self, frame: FrameType):
         dis.disco(self.dcode, frame.f_lasti)
+        self.interaction(frame)
 
     def dispatch_opcode(self, frame: FrameType):
         if self.stepflag or self.break_here(frame):
@@ -78,8 +82,8 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         return self.trace_dispatch
 
     # TODO
-    def interaction(self):
-        return
+    def interaction(self, frame):
+        self.cmdloop()
 
     def user_call(self, frame, argument_list) -> None:
         name = frame.f_code.co_name
