@@ -20,6 +20,7 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         cmd.Cmd.__init__(self)
         self.bplist = []
         self.stepflag = True
+        self.curFrame = None
 
     def do_break(self, arg: str):
         try:
@@ -42,6 +43,17 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         return 1
     do_s = do_step
 
+    # TODO
+    def do_stack(self, arg):
+        return
+
+    def do_p(self, arg):
+        try:
+            print(arg, repr(eval(arg, self.curFrame.f_globals, self.curFrame.f_locals)))
+        except Exception as e:
+            print('Something wrong ', repr(e))
+
+
     def break_here(self, frame: FrameType) -> bool:
         if frame.f_lasti in self.bplist:
             return True
@@ -52,10 +64,11 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         return dcode
 
     def user_opcode(self, frame: FrameType):
-        dis.disco(self.dcode, frame.f_lasti)
+        dis.disco(frame.f_code, frame.f_lasti)
         self.interaction(frame)
 
     def dispatch_opcode(self, frame: FrameType):
+        self.curFrame = frame
         if self.stepflag or self.break_here(frame):
             self.user_opcode(frame)
         return self.trace_dispatch
@@ -63,6 +76,7 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
     def trace_dispatch(self, frame: FrameType, event: str, arg: Any):
         if not frame.f_trace_opcodes:
             frame.f_trace_opcodes = True
+            self.curFrame = frame
         if self.quitting:
             return
         if event == 'line':
@@ -81,7 +95,6 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
             return self.trace_dispatch
         return self.trace_dispatch
 
-    # TODO
     def interaction(self, frame):
         self.cmdloop()
 
