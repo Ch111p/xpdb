@@ -21,6 +21,7 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         self.bplist = []
         self.stepflag = True
         self.curFrame = None
+        self.frameDict = {}
 
     def do_break(self, arg: str):
         try:
@@ -63,8 +64,36 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         dcode = marshal.loads(bytecode)
         return dcode
 
+    # modified from dis.disco
     def user_opcode(self, frame: FrameType):
-        dis.disco(frame.f_code, frame.f_lasti)
+        # dis.disco(frame.f_code, frame.f_lasti)
+        if frame.__hash__() not in self.frameDict.keys():
+            self.frameDict.update({frame.__hash__(): {}})
+            linestarts = dict(dis.findlinestarts(frame.f_code))
+            insList = []
+            maxlineno = max(linestarts.values())
+            length = 0
+            cell_names = frame.f_code.co_cellvars + frame.f_code.co_freevars
+            if maxlineno >= 10000:
+                lineno_width = len(str(maxlineno))
+            else:
+                lineno_width = 4
+            maxoffset = len(frame.f_code.co_code) - 2
+            if maxoffset >= 10000:
+                offset_width = len(str(maxoffset))
+            else:
+                offset_width = 4
+            for instr in dis.get_instructions(frame.f_code):
+                insList.append(instr)
+            self.frameDict[frame.__hash__()].update({'insList': insList,
+                                                     'lineno_width': lineno_width,
+                                                     'offset_width': offset_width })
+        lineno_width = self.frameDict[frame.__hash__()]['lineno_width']
+        offset_width = self.frameDict[frame.__hash__()]['offset_width']
+        insList = self.frameDict[frame.__hash__()]['insList']
+        for instr in insList:
+            is_current_instr = instr.offset == frame.f_lasti
+            print(instr._disassemble(lineno_width, is_current_instr, offset_width))
         self.interaction(frame)
 
     def dispatch_opcode(self, frame: FrameType):
@@ -125,7 +154,7 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
 
 if __name__ == "__main__":
     xpdb = Xpdb()
-    with open("test.pyc", "rb") as f:
+    with open("task.cpython-37.pyc", "rb") as f:
         f.seek(16)
         fileStr = f.read()
     print(fileStr)
