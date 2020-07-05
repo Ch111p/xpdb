@@ -1,4 +1,5 @@
 import bdb
+import pdb
 import code
 import marshal
 import dis
@@ -18,34 +19,46 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
     def __init__(self):
         bdb.Bdb.__init__(self)
         cmd.Cmd.__init__(self)
-        self.bplist = []
+        self.bplist = {}
         self.stepflag = True
         self.curFrame = None
         self.frameDict = {}
 
     def do_break(self, arg: str):
         try:
-            self.bplist.append(int(arg))
+            int(arg)
         except ValueError:
             print('usage: b[reak] line')
             return
-        self.bplist.append(arg)
+        if self.curFrame.__hash__() not in self.bplist.keys():
+            self.bplist.update({self.curFrame.__hash__(): []})
+        self.bplist[self.curFrame.__hash__()].append(arg)
+
     do_b = do_break
 
     def do_continue(self, arg):
-        print(arg)
         self.stepflag = False
         return 1
+
     do_c = do_continue
 
     def do_step(self, arg):
-        print('arg:', arg)
         self.stepflag = True
         return 1
+
     do_s = do_step
+
+    def do_finish(self, arg):
+        self.add_break(self.curFrame.f_back.f_lasti + 3, self.curFrame.f_back)
+        self.stepflag = False
+        return 1
 
     # TODO
     def do_stack(self, arg):
+        return
+
+    # TODO
+    def do_x(self, arg):
         return
 
     def do_p(self, arg):
@@ -54,10 +67,10 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
         except Exception as e:
             print('Something wrong ', repr(e))
 
-
     def break_here(self, frame: FrameType) -> bool:
-        if frame.f_lasti in self.bplist:
-            return True
+        if frame.__hash__() in self.bplist.keys():
+            if frame.f_lasti in self.bplist[frame.__hash__()]:
+                return True
         return False
 
     def __getcocode__(self, bytecode: bytes) -> CodeType:
@@ -87,7 +100,7 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
                 insList.append(instr)
             self.frameDict[frame.__hash__()].update({'insList': insList,
                                                      'lineno_width': lineno_width,
-                                                     'offset_width': offset_width })
+                                                     'offset_width': offset_width})
         lineno_width = self.frameDict[frame.__hash__()]['lineno_width']
         offset_width = self.frameDict[frame.__hash__()]['offset_width']
         insList = self.frameDict[frame.__hash__()]['insList']
@@ -138,15 +151,23 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
     def user_line(self, frame: FrameType) -> None:
         print('line ', frame.f_lineno)
 
-    def run(self, file: bytes):
+    def codeObjectChange(self, arg: bytes):
+        return
+
+    def run(self, file: bytes, globals=None, locals=None):
         self.reset()
         self.dcode = self.__getcocode__(file)
+        if globals is None:
+            import __main__
+            globals = __main__.__dict__
+        if locals is None:
+            locals = globals
         sys.settrace(self.trace_dispatch)
-        print(self.dcode.co_name)
         try:
-            exec(self.dcode)
-        except:
+            exec(self.dcode, globals, locals)
+        except Exception as e:
             print("Something Wrong")
+            print(e, repr(e))
         finally:
             self.quitting = True
             sys.settrace(None)
@@ -154,8 +175,11 @@ class Xpdb(bdb.Bdb, cmd.Cmd):
 
 if __name__ == "__main__":
     xpdb = Xpdb()
-    with open("task.cpython-37.pyc", "rb") as f:
+    if len(sys.argv) < 2:
+        print("usage: python3 xpdb.py [*.pyc]")
+        exit(0)
+    fileName = sys.argv[1]
+    with open(fileName, "rb") as f:
         f.seek(16)
         fileStr = f.read()
-    print(fileStr)
     xpdb.run(fileStr)
